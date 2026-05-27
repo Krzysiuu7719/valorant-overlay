@@ -99,12 +99,13 @@ body {
 
 /* MAŁE BOKSY */
 .small-box {
-    width: 82px; 
+    width: 95px; /* Lekko zwiększone, żeby zmieścić np "+120 RR" lub "-120 RR" */
     justify-content: center;
 }
 
+/* Szerokość boksu W/L/D */
 .wl-box {
-    width: 92px; 
+    width: 125px; 
 }
 
 .stat {
@@ -124,6 +125,10 @@ body {
 .red {
     color: #cc4c4c; 
 }
+
+.gray {
+    color: #a0a0a0; 
+}
 </style>
 </head>
 <body>
@@ -142,6 +147,7 @@ body {
         <div class="stat" id="wl">
             <span class="green">...</span>
             <span class="red">...</span>
+            <span class="gray">...</span>
         </div>
     </div>
 
@@ -158,6 +164,7 @@ const NAME = "ttv krzysix";
 const TAG = "EUPL";
 
 const sheet = window.document.styleSheets[0];
+let ruleIndex = null; 
 
 async function loadData() {
     try {
@@ -177,45 +184,68 @@ async function loadData() {
             return;
         }
 
+        // 1. AKTUALIZACJA RANGI I IKONY (Z zawsze najnowszego meczu)
         const latestMatch = resData.data[0];
-
-        // 1. AKTUALIZACJA RANGI I IKONY
         document.getElementById("rankName").innerText = latestMatch.currenttierpatched;
         document.getElementById("rr").innerText = `${latestMatch.ranking_in_tier}RR`;
         document.getElementById("rankIcon").src = latestMatch.images.small;
 
-        // 2. OSTATNIA ZMIANA RR
-        const lastChange = latestMatch.mmr_change_to_last_game;
-        const rrGainEl = document.getElementById("rrGain");
-
-        if (lastChange >= 0) {
-            rrGainEl.innerText = `+${lastChange} RR`;
-            rrGainEl.className = "stat green";
-            sheet.insertRule('#rrGainBox::after { background: #33a86b !important; }', sheet.cssRules.length);
-        } else {
-            rrGainEl.innerText = `${lastChange} RR`;
-            rrGainEl.className = "stat red";
-            sheet.insertRule('#rrGainBox::after { background: #cc4c4c !important; }', sheet.cssRules.length);
-        }
-
-        // 3. LICZENIE ZWYCIĘSTW I PORAŻEK
+        // 2. LICZENIE STATYSTYK Z CAŁEGO DNIA
         let wins = 0;
         let losses = 0;
+        let draws = 0;
+        let totalDailyRR = 0; // Zmienna trzymająca sumę punktów z dziś
 
-        const currentSessionMatches = resData.data.slice(0, 4); 
-        
-        currentSessionMatches.forEach(match => {
-            if (match.mmr_change_to_last_game > 0) {
-                wins++;
-            } else if (match.mmr_change_to_last_game < 0) {
-                losses++;
+        const todayStr = new Date().toLocaleDateString('en-CA'); 
+
+        resData.data.forEach(match => {
+            const matchDate = new Date(match.date_raw * 1000);
+            const matchDateStr = matchDate.toLocaleDateString('en-CA');
+
+            if (matchDateStr === todayStr) {
+                const change = match.mmr_change_to_last_game;
+                
+                // Dodajemy punkty z tego meczu do dziennego bilansu
+                totalDailyRR += change;
+
+                // Liczenie W/L/D
+                if (change > 0) {
+                    wins++;
+                } else if (change < 0) {
+                    losses++;
+                } else {
+                    draws++;
+                }
             }
         });
 
+        // 3. AKTUALIZACJA WIDOKU W/L/D
         document.getElementById("wl").innerHTML = `
             <span class="green">${wins}W</span>
             <span class="red">${losses}L</span>
+            <span class="gray">${draws}D</span>
         `;
+
+        // 4. AKTUALIZACJA WIDOKU BILANSU RR Z CAŁEGO DNIA
+        const rrGainEl = document.getElementById("rrGain");
+
+        if (ruleIndex !== null) {
+            try { sheet.deleteRule(ruleIndex); } catch(e) {}
+        }
+
+        if (totalDailyRR > 0) {
+            rrGainEl.innerText = `+${totalDailyRR} RR`;
+            rrGainEl.className = "stat green";
+            ruleIndex = sheet.insertRule('#rrGainBox::after { background: #33a86b !important; }', sheet.cssRules.length);
+        } else if (totalDailyRR < 0) {
+            rrGainEl.innerText = `${totalDailyRR} RR`;
+            rrGainEl.className = "stat red";
+            ruleIndex = sheet.insertRule('#rrGainBox::after { background: #cc4c4c !important; }', sheet.cssRules.length);
+        } else {
+            rrGainEl.innerText = `0 RR`;
+            rrGainEl.className = "stat gray";
+            ruleIndex = sheet.insertRule('#rrGainBox::after { background: #a0a0a0 !important; }', sheet.cssRules.length);
+        }
 
     } catch (err) {
         console.error("Błąd ładowania danych: ", err);
